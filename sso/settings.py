@@ -167,17 +167,9 @@ if not DEBUG:
     
 # ALLOWED_HOSTS configuration
 if os.environ.get('RAILWAY_ENVIRONMENT'):
-    # В Railway
-    RAILWAY_PUBLIC_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
-    RAILWAY_PRIVATE_DOMAIN = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '')
-    
+    # В Railway - разрешаем все Railway домены
     ALLOWED_HOSTS = [
-        RAILWAY_PUBLIC_DOMAIN,
-        RAILWAY_PRIVATE_DOMAIN,
-        'localhost',
-        '127.0.0.1',
-        '.railway.app',
-        'healthcheck.railway.app',
+        '*',  # Временно разрешаем все
     ]
 else:
     # Локально
