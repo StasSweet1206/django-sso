@@ -168,13 +168,9 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
     
-# Railway Environment Detection
-RAILWAY_ENVIRONMENT = os.environ.get('RAILWAY_ENVIRONMENT')
-
-if RAILWAY_ENVIRONMENT:
-    DEBUG = False
-    
-    # Allowed Hosts
+# ALLOWED_HOSTS configuration
+if os.environ.get('RAILWAY_ENVIRONMENT'):
+    # В Railway
     RAILWAY_PUBLIC_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
     RAILWAY_PRIVATE_DOMAIN = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '')
     
@@ -183,25 +179,9 @@ if RAILWAY_ENVIRONMENT:
         RAILWAY_PRIVATE_DOMAIN,
         'localhost',
         '127.0.0.1',
+        '.railway.app',
+        'healthcheck.railway.app',  # ← Добавьте эту строку!
     ]
-    
-    # CSRF
-    CSRF_TRUSTED_ORIGINS = [
-        f'https://{RAILWAY_PUBLIC_DOMAIN}',
-        f'https://{RAILWAY_PRIVATE_DOMAIN}',
-    ]
-    
-    # Логирование
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-            },
-        },
-        'root': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
-    }
+else:
+    # Локально
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
