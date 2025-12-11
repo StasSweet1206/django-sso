@@ -167,3 +167,41 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+    
+# Railway Environment Detection
+RAILWAY_ENVIRONMENT = os.environ.get('RAILWAY_ENVIRONMENT')
+
+if RAILWAY_ENVIRONMENT:
+    DEBUG = False
+    
+    # Allowed Hosts
+    RAILWAY_PUBLIC_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+    RAILWAY_PRIVATE_DOMAIN = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '')
+    
+    ALLOWED_HOSTS = [
+        RAILWAY_PUBLIC_DOMAIN,
+        RAILWAY_PRIVATE_DOMAIN,
+        'localhost',
+        '127.0.0.1',
+    ]
+    
+    # CSRF
+    CSRF_TRUSTED_ORIGINS = [
+        f'https://{RAILWAY_PUBLIC_DOMAIN}',
+        f'https://{RAILWAY_PRIVATE_DOMAIN}',
+    ]
+    
+    # Логирование
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'root': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    }
