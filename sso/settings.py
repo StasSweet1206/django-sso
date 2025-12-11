@@ -10,9 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
-
-from dotenv import load_dotenv  # ← ДОБАВЬ ЭТУ СТРОКУ
+from dotenv import load_dotenv
 
 # Загружаем переменные из .env
 load_dotenv()
@@ -25,12 +25,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-mbs+%ymg#c1if(*mehgn+bz!wsby@=s3^k_56xf^2*lqoq1uq4'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-mbs+%ymg#c1if(*mehgn+bz!wsby@=s3^k_56xf^2*lqoq1uq4')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -47,6 +47,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # ← Добавлено для статики
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -79,12 +80,27 @@ WSGI_APPLICATION = 'sso.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Проверяем есть ли DATABASE_URL (Railway/Production)
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    # Production база данных (PostgreSQL на Railway)
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    # Локальная разработка (SQLite)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -109,9 +125,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ru-ru'  # ← Изменено на русский
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Moscow'  # ← Изменено на московское время
 
 USE_I18N = True
 
@@ -121,25 +137,33 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise для раздачи статики
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Статические файлы
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
 # Настройки для 1С
-ONEC_API_URL='http://95.174.101.249/rashitova_mebelen1/hs'
-ONEC_API_LOGIN= 'RdpAdmin'
-ONEC_API_PASSWORD= 'Rdp2025*11*29((!'
+ONEC_API_URL = os.environ.get('ONEC_API_URL', 'http://95.174.101.249/rashitova_mebelen1/hs')
+ONEC_API_LOGIN = os.environ.get('ONEC_API_LOGIN', 'RdpAdmin')
+ONEC_API_PASSWORD = os.environ.get('ONEC_API_PASSWORD', 'Rdp2025*11*29((!')
 
 # Для отладки - используем тестовый режим
-ONEC_TEST_MODE = True  # Временно для тестов
+ONEC_TEST_MODE = os.environ.get('ONEC_TEST_MODE', 'True') == 'True'
 
+# Security settings для production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
