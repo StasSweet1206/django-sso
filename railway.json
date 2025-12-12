@@ -4,7 +4,7 @@
         "builder": "NIXPACKS"
     },
     "deploy": {
-        "startCommand": "gunicorn sso.wsgi:application --bind 0.0.0.0:$PORT",
+        "startCommand": "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn sso.wsgi:application --bind 0.0.0.0:$PORT",
         "healthcheckPath": "/admin/",
         "healthcheckTimeout": 300,
         "restartPolicyType": "ON_FAILURE",
