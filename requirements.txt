@@ -6,3 +6,4 @@ requests>=2.32
 whitenoise>=6.11
 dj-database-url>=3.0
 typing-extensions>=4.12
+django-cors-headers>=4.6
