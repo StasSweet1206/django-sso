@@ -178,5 +178,15 @@ else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     
 # CORS settings
-CORS_ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '').split(',')
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() 
+    for origin in os.getenv('ALLOWED_ORIGINS', '').split(',') 
+    if origin.strip()
+]
+
+# Если переменная не установлена, используем значение по умолчанию
+if not CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS = ['https://telegram-shop-rust.vercel.app']
+
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # Явно запрещаем все origins
