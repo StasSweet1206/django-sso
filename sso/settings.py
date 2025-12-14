@@ -160,12 +160,17 @@ ONEC_TEST_MODE = os.environ.get('ONEC_TEST_MODE', 'True') == 'True'
 
 # Security settings для production
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    # Railway использует прокси, поэтому нужна эта настройка
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # НЕ включаем SECURE_SSL_REDIRECT для Railway!
+    SECURE_SSL_REDIRECT = False
+    
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'
+    X_FRAME_OPTIONS = 'SAMEORIGIN'  # Изменено с DENY на SAMEORIGIN для Telegram
     
 # ALLOWED_HOSTS configuration
 if os.environ.get('RAILWAY_ENVIRONMENT'):
@@ -178,15 +183,32 @@ else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     
 # CORS settings
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() 
-    for origin in os.getenv('ALLOWED_ORIGINS', '').split(',') 
-    if origin.strip()
+    "https://telegram-shop-rust.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 
-# Если переменная не установлена, используем значение по умолчанию
-if not CORS_ALLOWED_ORIGINS:
-    CORS_ALLOWED_ORIGINS = ['https://telegram-shop-rust.vercel.app']
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
