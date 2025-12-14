@@ -1,126 +1,196 @@
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from .models import Category, Product
+from django.views.decorators.csrf import csrf_exempt
+from django.core.paginator import Paginator
+from django.db.models import Q, Prefetch
+from .models import Category, Product, ProductVariant
 
-def add_cors_headers(response):
-    """Добавить CORS заголовки к ответу"""
-    response['Access-Control-Allow-Origin'] = '*'
-    response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-    return response
 
 @csrf_exempt
-@require_http_methods(["GET", "OPTIONS"])
-def category_list(request):
-    """Получить список категорий с пагинацией"""
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        return add_cors_headers(response)
-
+@require_http_methods(["GET"])
+def categories_list(request):
+    """Получение списка категорий"""
     try:
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
+        parent_code = request.GET.get('parent')  # Фильтр по родительской категории
 
-        categories = Category.objects.all()
-        total = categories.count()
+        # Получаем только активные категории
+        categories = Category.objects.filter(is_active=True)
 
-        start = (page - 1) * page_size
-        end = start + page_size
+        # Если запрашивают корневые категории
+        if parent_code == 'root' or not parent_code:
+            categories = categories.filter(
+                Q(parent__isnull=True) | 
+                Q(parent_code_1c='00000000-0000-0000-0000-000000000000')
+            )
+        elif parent_code:
+            categories = categories.filter(parent_code_1c=parent_code)
 
-        categories_page = categories[start:end]
+        # Пагинация
+        paginator = Paginator(categories, page_size)
+        page_obj = paginator.get_page(page)
 
-        response = JsonResponse({
-            'count': total,
-            'next': page + 1 if end < total else None,
-            'previous': page - 1 if page > 1 else None,
-            'results': [
-                {
-                    'id': cat.id,
-                    'name': cat.name,
-                    'guid': str(cat.guid),
-                }
-                for cat in categories_page
-            ]
+        results = [
+            {
+                "id": cat.id,
+                "code_1c": cat.code_1c,
+                "name": cat.name,
+                "description": cat.description,
+                "parent_code_1c": cat.parent_code_1c,
+                "has_children": cat.children.filter(is_active=True).exists(),
+                "products_count": cat.products.filter(is_active=True).count(),
+                "order": cat.order
+            }
+            for cat in page_obj
+        ]
+
+        return JsonResponse({
+            "results": results,
+            "count": paginator.count,
+            "next": page_obj.next_page_number() if page_obj.has_next() else None,
+            "previous": page_obj.previous_page_number() if page_obj.has_previous() else None
         })
-
-        return add_cors_headers(response)
-
     except Exception as e:
-        response = JsonResponse({'error': str(e)}, status=500)
-        return add_cors_headers(response)
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 @csrf_exempt
-@require_http_methods(["GET", "OPTIONS"])
-def category_detail(request, category_id):
-    """Получить детали категории"""
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        return add_cors_headers(response)
-
+@require_http_methods(["GET"])
+def products_list(request):
+    """Получение списка товаров"""
     try:
-        category = Category.objects.get(id=category_id)
-        response = JsonResponse({
-            'id': category.id,
-            'name': category.name,
-            'guid': str(category.guid),
-        })
-        return add_cors_headers(response)
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        category_code = request.GET.get('category')
+        search = request.GET.get('search', '').strip()
 
-    except Category.DoesNotExist:
-        response = JsonResponse({'error': 'Category not found'}, status=404)
-        return add_cors_headers(response)
-    except Exception as e:
-        response = JsonResponse({'error': str(e)}, status=500)
-        return add_cors_headers(response)
+        # Получаем активные товары с категориями
+        products = Product.objects.filter(is_active=True).select_related('category')
 
-@csrf_exempt
-@require_http_methods(["GET", "OPTIONS"])
-def product_list(request):
-    """Получить список товаров"""
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        return add_cors_headers(response)
+        # Фильтр по категории
+        if category_code:
+            products = products.filter(category__code_1c=category_code)
 
-    try:
-        products = Product.objects.all()[:20]
-        response = JsonResponse({
-            'count': products.count(),
-            'results': [
-                {
-                    'id': p.id,
-                    'name': p.name,
-                    'price': float(p.price),
+        # Поиск
+        if search:
+            products = products.filter(
+                Q(name__icontains=search) | 
+                Q(full_name__icontains=search) |
+                Q(code_1c__icontains=search)
+            )
+
+        # Пагинация
+        paginator = Paginator(products, page_size)
+        page_obj = paginator.get_page(page)
+
+        results = []
+        for prod in page_obj:
+            product_data = {
+                "id": prod.id,
+                "code_1c": prod.code_1c,
+                "name": prod.name,
+                "full_name": prod.full_name,
+                "image": prod.image_url or "",
+                "has_variants": prod.has_variants,
+                "category": None
+            }
+
+            if prod.category:
+                product_data["category"] = {
+                    "id": prod.category.id,
+                    "code_1c": prod.category.code_1c,
+                    "name": prod.category.name
                 }
-                for p in products
-            ]
-        })
-        return add_cors_headers(response)
 
+            results.append(product_data)
+
+        return JsonResponse({
+            "results": results,
+            "count": paginator.count,
+            "next": page_obj.next_page_number() if page_obj.has_next() else None,
+            "previous": page_obj.previous_page_number() if page_obj.has_previous() else None
+        })
     except Exception as e:
-        response = JsonResponse({'error': str(e)}, status=500)
-        return add_cors_headers(response)
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 @csrf_exempt
-@require_http_methods(["GET", "OPTIONS"])
+@require_http_methods(["GET"])
 def product_detail(request, product_id):
-    """Получить детали товара"""
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        return add_cors_headers(response)
-
+    """Получение детальной информации о товаре"""
     try:
-        product = Product.objects.get(id=product_id)
-        response = JsonResponse({
-            'id': product.id,
-            'name': product.name,
-            'price': float(product.price),
-        })
-        return add_cors_headers(response)
+        product = Product.objects.select_related('category').prefetch_related(
+            Prefetch('variants', queryset=ProductVariant.objects.filter(is_active=True))
+        ).get(id=product_id, is_active=True)
 
+        # Варианты товара
+        variants = [
+            {
+                "id": var.id,
+                "code_1c": var.code_1c,
+                "name": var.name,
+                "full_name": var.full_name,
+                "image": var.image_url or ""
+            }
+            for var in product.variants.all()
+        ]
+
+        response_data = {
+            "id": product.id,
+            "code_1c": product.code_1c,
+            "name": product.name,
+            "full_name": product.full_name,
+            "image": product.image_url or "",
+            "has_variants": product.has_variants,
+            "variants": variants,
+            "category": None,
+            "created_at": product.created_at.isoformat(),
+            "updated_at": product.updated_at.isoformat()
+        }
+
+        if product.category:
+            response_data["category"] = {
+                "id": product.category.id,
+                "code_1c": product.category.code_1c,
+                "name": product.category.name
+            }
+
+        return JsonResponse(response_data)
     except Product.DoesNotExist:
-        response = JsonResponse({'error': 'Product not found'}, status=404)
-        return add_cors_headers(response)
+        return JsonResponse({"error": "Товар не найден"}, status=404)
     except Exception as e:
-        response = JsonResponse({'error': str(e)}, status=500)
-        return add_cors_headers(response)
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def category_tree(request):
+    """Получение дерева категорий"""
+    try:
+        def build_tree(parent_code='00000000-0000-0000-0000-000000000000'):
+            categories = Category.objects.filter(
+                is_active=True,
+                parent_code_1c=parent_code
+            ).order_by('order', 'name')
+
+            result = []
+            for cat in categories:
+                cat_data = {
+                    "id": cat.id,
+                    "code_1c": cat.code_1c,
+                    "name": cat.name,
+                    "description": cat.description,
+                    "order": cat.order,
+                    "products_count": cat.products.filter(is_active=True).count(),
+                    "children": build_tree(cat.code_1c)
+                }
+                result.append(cat_data)
+
+            return result
+
+        tree = build_tree()
+
+        return JsonResponse({"categories": tree})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
