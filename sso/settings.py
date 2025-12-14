@@ -189,4 +189,4 @@ if not CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGINS = ['https://telegram-shop-rust.vercel.app']
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False  # Явно запрещаем все origins
+CORS_ALLOW_ALL_ORIGINS = True
