@@ -13,17 +13,22 @@ def categories_list(request):
     try:
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
-        parent_id = request.GET.get('parent_id')
+
+        # ✅ ИСПРАВЛЕНО: Читаем parent_id (а не parent)
+        parent_id = request.GET.get('parent_id')  
 
         print(f"🔍 categories_list: parent_id={parent_id}, page={page}, page_size={page_size}")
 
         # Получаем только активные категории
         categories = Category.objects.filter(is_active=True)
 
+        # ✅ ИСПРАВЛЕНО: Фильтруем по parent_id
         if parent_id == 'root' or parent_id == 'null' or not parent_id:
+            # Корневые категории (без родителя)
             categories = categories.filter(parent__isnull=True)
             print(f"📂 Загружаем КОРНЕВЫЕ категории")
         else:
+            # Подкатегории с конкретным родителем
             try:
                 parent_id_int = int(parent_id)
                 categories = categories.filter(parent_id=parent_id_int)
@@ -32,31 +37,32 @@ def categories_list(request):
                 print(f"❌ Неверный parent_id: {parent_id}")
                 return JsonResponse({"error": "Invalid parent_id"}, status=400)
 
+        # Сортировка
         categories = categories.order_by('order', 'name')
+
         print(f"📊 Найдено категорий ПЕРЕД пагинацией: {categories.count()}")
 
         # Пагинация
         paginator = Paginator(categories, page_size)
         page_obj = paginator.get_page(page)
+
         print(f"📄 Страница {page}/{paginator.num_pages}, товаров на странице: {len(page_obj)}")
 
         results = []
         for cat in page_obj:
             result = {
-                "id": cat.id,
+                "id": cat.id,  # ✅ ID для фронтенда
                 "code_1c": cat.code_1c,
                 "name": cat.name,
                 "description": cat.description,
-                "parent": cat.parent_id,
-                "parent_id": cat.parent_id,
-                "parent_code_1c": cat.parent.code_1c if cat.parent_id else None,  # ✅ БЕЗОПАСНО
-                "image": cat.image.url if cat.image else None,  # ✅ ДОБАВЛЕНО
+                "parent": cat.parent_id,  # ✅ ВАЖНО: Django ожидает 'parent', а не 'parentId'
+                "parent_id": cat.parent_id,  # ✅ Дублируем для совместимости
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
                 "order": cat.order
             }
             results.append(result)
-            print(f"  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}, IMAGE: {result['image']}")
+            print(f"  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}")
 
         response_data = {
             "results": results,
@@ -73,6 +79,7 @@ def categories_list(request):
         import traceback
         traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
+
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -205,6 +212,66 @@ def product_detail(request, product_id):
         traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
 
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def category_tree(request):
+    """Получение дерева категорий (БЕЗ ПАГИНАЦИИ - для особых случаев)"""
+    try:
+        print("🌳 category_tree: Строим дерево категорий")
+
+        def build_tree(parent_id=None, level=0):
+            indent = "  " * level
+
+            if parent_id is None:
+                # Корневые категории
+                categories = Category.objects.filter(
+                    is_active=True,
+                    parent__isnull=True
+                ).order_by('order', 'name')
+                print(f"{indent}📂 Загружаем КОРНЕВЫЕ категории")
+            else:
+                # Дочерние категории
+                categories = Category.objects.filter(
+                    is_active=True,
+                    parent_id=parent_id
+                ).order_by('order', 'name')
+                print(f"{indent}📂 Загружаем подкатегории для parent_id={parent_id}")
+
+            print(f"{indent}📊 Найдено категорий: {categories.count()}")
+
+            result = []
+            for cat in categories:
+                print(f"{indent}  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}")
+
+                cat_data = {
+                    "id": cat.id,
+                    "code_1c": cat.code_1c,
+                    "name": cat.name,
+                    "description": cat.description,
+                    "parent": cat.parent_id,  # ✅ ИЗМЕНЕНО: 'parent' для Django serializer
+                    "parentId": cat.parent_id,  # ✅ ДОБАВЛЕНО: для фронтенда
+                    "order": cat.order,
+                    "has_children": cat.children.filter(is_active=True).exists(),
+                    "products_count": cat.products.filter(is_active=True).count(),
+                    "children": build_tree(cat.id, level + 1)  # ✅ Рекурсия
+                }
+                result.append(cat_data)
+
+            return result
+
+        tree = build_tree()
+
+        print(f"✅ Дерево построено, корневых категорий: {len(tree)}")
+        return JsonResponse({"categories": tree})
+
+    except Exception as e:
+        print(f"❌ ОШИБКА в category_tree: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+
 # ✅ ДОБАВЛЕНО: Endpoint для получения подкатегорий конкретной категории
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -238,14 +305,12 @@ def category_subcategories(request, category_id):
                 "description": cat.description,
                 "parent": cat.parent_id,
                 "parent_id": cat.parent_id,
-                "parent_code_1c": cat.parent.code_1c if cat.parent_id else None,  # ✅ БЕЗОПАСНО
-                "image": cat.image.url if cat.image else None,  # ✅ ДОБАВЛЕНО
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
                 "order": cat.order
             }
             results.append(result)
-            print(f"  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}, IMAGE: {result['image']}")
+            print(f"  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}")
 
         print(f"✅ Отправляем {len(results)} подкатегорий")
         return JsonResponse({"results": results, "count": len(results)})
