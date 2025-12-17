@@ -49,7 +49,7 @@ def categories_list(request):
                 "description": cat.description,
                 "parent": cat.parent_id,
                 "parent_id": cat.parent_id,
-                "parent_code_1c": cat.parent.code_1c if cat.parent else None,  # ✅ ДОБАВЛЕНО
+                "parent_code_1c": cat.parent.code_1c if cat.parent_id else None,  # ✅ БЕЗОПАСНО
                 "image": cat.image.url if cat.image else None,  # ✅ ДОБАВЛЕНО
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
@@ -205,76 +205,6 @@ def product_detail(request, product_id):
         traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
 
-
-@@csrf_exempt
-@require_http_methods(["GET"])
-def categories_list(request):
-    """Получение списка категорий"""
-    try:
-        page = int(request.GET.get('page', 1))
-        page_size = int(request.GET.get('page_size', 20))
-        parent_id = request.GET.get('parent_id')
-
-        print(f"🔍 categories_list: parent_id={parent_id}, page={page}, page_size={page_size}")
-
-        # Получаем только активные категории
-        categories = Category.objects.filter(is_active=True)
-
-        if parent_id == 'root' or parent_id == 'null' or not parent_id:
-            categories = categories.filter(parent__isnull=True)
-            print(f"📂 Загружаем КОРНЕВЫЕ категории")
-        else:
-            try:
-                parent_id_int = int(parent_id)
-                categories = categories.filter(parent_id=parent_id_int)
-                print(f"📂 Загружаем ПОДКАТЕГОРИИ для parent_id={parent_id_int}")
-            except (ValueError, TypeError):
-                print(f"❌ Неверный parent_id: {parent_id}")
-                return JsonResponse({"error": "Invalid parent_id"}, status=400)
-
-        categories = categories.order_by('order', 'name')
-        print(f"📊 Найдено категорий ПЕРЕД пагинацией: {categories.count()}")
-
-        # Пагинация
-        paginator = Paginator(categories, page_size)
-        page_obj = paginator.get_page(page)
-        print(f"📄 Страница {page}/{paginator.num_pages}, товаров на странице: {len(page_obj)}")
-
-        results = []
-        for cat in page_obj:
-            result = {
-                "id": cat.id,
-                "code_1c": cat.code_1c,
-                "name": cat.name,
-                "description": cat.description,
-                "parent": cat.parent_id,
-                "parent_id": cat.parent_id,
-                "parent_code_1c": cat.parent.code_1c if cat.parent else None,  # ✅ ДОБАВЛЕНО
-                "image": cat.image.url if cat.image else None,  # ✅ ДОБАВЛЕНО
-                "has_children": cat.children.filter(is_active=True).exists(),
-                "products_count": cat.products.filter(is_active=True).count(),
-                "order": cat.order
-            }
-            results.append(result)
-            print(f"  ✅ ID: {cat.id}, NAME: {cat.name}, PARENT: {cat.parent_id}, IMAGE: {result['image']}")
-
-        response_data = {
-            "results": results,
-            "count": paginator.count,
-            "next": page_obj.next_page_number() if page_obj.has_next() else None,
-            "previous": page_obj.previous_page_number() if page_obj.has_previous() else None
-        }
-
-        print(f"✅ Отправляем {len(results)} категорий")
-        return JsonResponse(response_data)
-
-    except Exception as e:
-        print(f"❌ ОШИБКА в categories_list: {e}")
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({"error": str(e)}, status=500)
-
-
 # ✅ ДОБАВЛЕНО: Endpoint для получения подкатегорий конкретной категории
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -308,7 +238,7 @@ def category_subcategories(request, category_id):
                 "description": cat.description,
                 "parent": cat.parent_id,
                 "parent_id": cat.parent_id,
-                "parent_code_1c": cat.parent.code_1c if cat.parent else None,  # ✅ ДОБАВЛЕНО
+                "parent_code_1c": cat.parent.code_1c if cat.parent_id else None,  # ✅ БЕЗОПАСНО
                 "image": cat.image.url if cat.image else None,  # ✅ ДОБАВЛЕНО
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
