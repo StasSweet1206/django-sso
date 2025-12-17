@@ -13,19 +13,25 @@ def categories_list(request):
     try:
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
-        parent_code = request.GET.get('parent')  # Фильтр по родительской категории
+        parent_id = request.GET.get('parent')  # ✅ ИЗМЕНЕНО: parent_id вместо parent_code
 
         # Получаем только активные категории
         categories = Category.objects.filter(is_active=True)
 
-        # Если запрашивают корневые категории
-        if parent_code == 'root' or not parent_code:
-            categories = categories.filter(
-                Q(parent__isnull=True) | 
-                Q(parent_code_1c='00000000-0000-0000-0000-000000000000')
-            )
-        elif parent_code:
-            categories = categories.filter(parent_code_1c=parent_code)
+        # ✅ ИЗМЕНЕНО: Фильтруем по parent_id
+        if parent_id == 'root' or not parent_id:
+            # Корневые категории (без родителя)
+            categories = categories.filter(parent__isnull=True)
+        else:
+            # Подкатегории с конкретным родителем
+            try:
+                parent_id = int(parent_id)
+                categories = categories.filter(parent_id=parent_id)
+            except (ValueError, TypeError):
+                return JsonResponse({"error": "Invalid parent_id"}, status=400)
+
+        # Сортировка
+        categories = categories.order_by('order', 'name')
 
         # Пагинация
         paginator = Paginator(categories, page_size)
@@ -33,11 +39,11 @@ def categories_list(request):
 
         results = [
             {
-                "id": cat.id,
+                "id": cat.id,  # ✅ ГЛАВНОЕ: ID для фронтенда
                 "code_1c": cat.code_1c,
                 "name": cat.name,
                 "description": cat.description,
-                "parent_code_1c": cat.parent_code_1c,
+                "parentId": cat.parent_id,  # ✅ ИЗМЕНЕНО: parentId вместо parent_code_1c
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
                 "order": cat.order
@@ -62,15 +68,19 @@ def products_list(request):
     try:
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
-        category_code = request.GET.get('category')
+        category_id = request.GET.get('category')  # ✅ ИЗМЕНЕНО: category_id вместо category_code
         search = request.GET.get('search', '').strip()
 
         # Получаем активные товары с категориями
         products = Product.objects.filter(is_active=True).select_related('category')
 
-        # Фильтр по категории
-        if category_code:
-            products = products.filter(category__code_1c=category_code)
+        # ✅ ИЗМЕНЕНО: Фильтр по category_id
+        if category_id:
+            try:
+                category_id = int(category_id)
+                products = products.filter(category_id=category_id)
+            except (ValueError, TypeError):
+                return JsonResponse({"error": "Invalid category_id"}, status=400)
 
         # Поиск
         if search:
@@ -79,6 +89,9 @@ def products_list(request):
                 Q(full_name__icontains=search) |
                 Q(code_1c__icontains=search)
             )
+
+        # Сортировка
+        products = products.order_by('name')
 
         # Пагинация
         paginator = Paginator(products, page_size)
@@ -93,15 +106,11 @@ def products_list(request):
                 "full_name": prod.full_name,
                 "image": prod.image_url or "",
                 "has_variants": prod.has_variants,
-                "category": None
-            }
-
-            if prod.category:
-                product_data["category"] = {
+                "category": {  # ✅ ИЗМЕНЕНО: возвращаем объект категории
                     "id": prod.category.id,
-                    "code_1c": prod.category.code_1c,
                     "name": prod.category.name
-                }
+                } if prod.category else None
+            }
 
             results.append(product_data)
 
@@ -144,17 +153,13 @@ def product_detail(request, product_id):
             "image": product.image_url or "",
             "has_variants": product.has_variants,
             "variants": variants,
-            "category": None,
+            "category": {  # ✅ ИЗМЕНЕНО: упрощена структура
+                "id": product.category.id,
+                "name": product.category.name
+            } if product.category else None,
             "created_at": product.created_at.isoformat(),
             "updated_at": product.updated_at.isoformat()
         }
-
-        if product.category:
-            response_data["category"] = {
-                "id": product.category.id,
-                "code_1c": product.category.code_1c,
-                "name": product.category.name
-            }
 
         return JsonResponse(response_data)
     except Product.DoesNotExist:
@@ -166,13 +171,22 @@ def product_detail(request, product_id):
 @csrf_exempt
 @require_http_methods(["GET"])
 def category_tree(request):
-    """Получение дерева категорий"""
+    """Получение дерева категорий (БЕЗ ПАГИНАЦИИ - для особых случаев)"""
     try:
-        def build_tree(parent_code='00000000-0000-0000-0000-000000000000'):
-            categories = Category.objects.filter(
-                is_active=True,
-                parent_code_1c=parent_code
-            ).order_by('order', 'name')
+        # ✅ ИЗМЕНЕНО: Работаем через parent_id вместо parent_code_1c
+        def build_tree(parent_id=None):
+            if parent_id is None:
+                # Корневые категории
+                categories = Category.objects.filter(
+                    is_active=True,
+                    parent__isnull=True
+                ).order_by('order', 'name')
+            else:
+                # Дочерние категории
+                categories = Category.objects.filter(
+                    is_active=True,
+                    parent_id=parent_id
+                ).order_by('order', 'name')
 
             result = []
             for cat in categories:
@@ -181,9 +195,10 @@ def category_tree(request):
                     "code_1c": cat.code_1c,
                     "name": cat.name,
                     "description": cat.description,
+                    "parentId": cat.parent_id,  # ✅ ДОБАВЛЕНО
                     "order": cat.order,
                     "products_count": cat.products.filter(is_active=True).count(),
-                    "children": build_tree(cat.code_1c)
+                    "children": build_tree(cat.id)  # ✅ ИЗМЕНЕНО: передаём id
                 }
                 result.append(cat_data)
 
