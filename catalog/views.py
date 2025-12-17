@@ -51,7 +51,7 @@ def categories_list(request):
         results = []
         for cat in page_obj:
             result = {
-                "id": cat.id,  # ✅ ID для фронтенда
+                "id": cat.id,
                 "code_1c": cat.code_1c,
                 "name": cat.name,
                 "description": cat.description,
