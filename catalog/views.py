@@ -55,8 +55,7 @@ def categories_list(request):
                 "code_1c": cat.code_1c,
                 "name": cat.name,
                 "description": cat.description,
-                "parent": cat.parent_id,  # ✅ ВАЖНО: Django ожидает 'parent', а не 'parentId'
-                "parent_id": cat.parent_id,  # ✅ Дублируем для совместимости
+                "parent_id": cat.parent_id,
                 "has_children": cat.children.filter(is_active=True).exists(),
                 "products_count": cat.products.filter(is_active=True).count(),
                 "order": cat.order
